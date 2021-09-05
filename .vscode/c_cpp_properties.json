@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/**",
+                "/usr/src/linux-hwe-5.4-headers-5.4.0-81/**",
+                "/usr/src/linux-hwe-5.4-headers-5.4.0-81/include**",
+                "/usr/src/linux-headers-5.4.0-81-generic/**",
+                "/usr/src/linux-headers-5.4.0-81-generic/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}
