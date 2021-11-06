@@ -1,4 +1,4 @@
-obj-m += char_driver.o
+obj-m += mm-dma.o
 
 
 KDIR = /lib/modules/$(shell uname -r)/build
