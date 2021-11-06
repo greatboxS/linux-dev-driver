@@ -1,13 +1,5 @@
 {
     "files.associations": {
-        "fstream": "c",
-        "memory": "c",
-        "uaccess.h": "c",
-        "memory.h": "c",
-        "cstdlib": "c",
-        "i2c-dev.h": "c",
-        "i2c.h": "c",
         "common.h": "c"
     }
-    // "C_Cpp.errorSquiggles": "Disabled"
 }

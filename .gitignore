@@ -5,3 +5,5 @@
 *.mod.c
 *.mod
 *.symvers
+
+/.vscode

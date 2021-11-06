@@ -17,4 +17,13 @@
 #include <linux/delay.h>
 #include <linux/completion.h>           // for thread completed check
 
+
+/**
+ * @brief 
+ * MODULE_LICENSE("GPL");
+ * MODULE_AUTHOR("Greatboxs <https://github.com/greatboxs>");
+ * MODULE_DESCRIPTION("Module descriptor");
+ * MODULE_VERSION("1.0");
+ * 
+ */
 #endif // __COMMON_H__
