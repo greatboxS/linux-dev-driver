@@ -5,10 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/usr/include/**",
-                "/usr/src/linux-hwe-5.4-headers-5.4.0-81/**",
-                "/usr/src/linux-hwe-5.4-headers-5.4.0-81/include**",
-                "/usr/src/linux-headers-5.4.0-81-generic/**",
-                "/usr/src/linux-headers-5.4.0-81-generic/include/**"
+                "/usr/src/linux-headers-5.10.60-v7l+/**",
+                "/usr/src/linux-headers-5.10.60-v7l+/include**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

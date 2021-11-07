@@ -1,4 +1,4 @@
-obj-m += mm-dma.o
+obj-m += my_mm_dma.o
 
 
 KDIR = /lib/modules/$(shell uname -r)/build
