@@ -180,6 +180,7 @@ return_unlock:
 int dev_open(struct inode *node, struct file *file)
 {
     struct char_dev_t *this = NULL;
+   
     pr_info("Open mm-dma device\n");
 
     this = container_of(node->i_cdev, struct char_dev_t, c_dev);
