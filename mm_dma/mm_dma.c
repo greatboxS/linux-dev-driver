@@ -16,11 +16,11 @@
 
 #define DEV_MAJOR_NUM 0
 #define DEV_MINOR_NUM 1
-#define DEV_BUFF_SIZE (1024 * 1)
+#define DEV_BUFF_SIZE (PAGE_SIZE * 2)
 #define DEV_CLASS "mm-dma-dev"
 #define DEV_NAME "mm-dma-dev"
 
-#define DMA_BUFF_SIZE (1024 * 2)
+#define DMA_BUFF_SIZE DEV_BUFF_SIZE
 
 #if defined(CONFIG_ARM)
 #define _PGPROT_NONCACHED(vm_page_prot) pgprot_noncached(vm_page_prot)
@@ -39,6 +39,8 @@
 // ioctl macro
 #define DEV_CMD_WRITE_CONFIG (_IOW(DEV_MAJOR_NUM, 0, uint8_t *))
 #define DEV_CMD_READ_CONFIG (_IOR(DEV_MAJOR_NUM, 1, uint8_t *))
+#define DEV_CMD_QBUF (_IOWR(DEV_MAJOR_NUM, 2, uint8_t *))
+#define DEV_CMD_DQBUF (_IOWR(DEV_MAJOR_NUM, 3, uint8_t *))
 //
 
 /* File operaitons definition*/
@@ -61,6 +63,7 @@ static struct char_dev_t
     struct mutex mtx;
     int sync_mode;
     int is_open;
+    int mtx_lock;
     struct dma_dev_t
     {
         uint8_t *buffer;
@@ -176,16 +179,13 @@ return_unlock:
 
 int dev_open(struct inode *node, struct file *file)
 {
-    struct char_dev_t *this;
-    int status = 0;
+    struct char_dev_t *this = NULL;
+    pr_info("Open mm-dma device\n");
 
     this = container_of(node->i_cdev, struct char_dev_t, c_dev);
     file->private_data = this;
     this->is_open = 1;
-
-    pr_info("Open mm-dma device\n");
-
-    return status;
+    return 0;
 }
 
 int dev_release(struct inode *node, struct file *file)
@@ -197,36 +197,48 @@ int dev_release(struct inode *node, struct file *file)
 }
 long dev_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+    struct char_dev_t *this = file->private_data;
+    long result = -1;
     pr_info("File ioctl\n");
-    size_t len = 0;
+    int8_t *buffer = (int8_t *)arg;
     switch (cmd)
     {
     case DEV_CMD_WRITE_CONFIG:
-        if (access_ok(arg, len))
-        {
-            return len;
-        }
-        else
-        {
-            pr_err("Data is not accessible\n");
-        }
+        result = 0;
         break;
 
     case DEV_CMD_READ_CONFIG:
-        if (access_ok(arg, len))
+        result = 0;
+        break;
+
+    case DEV_CMD_QBUF:
+        if (this->mtx_lock)
+            mutex_unlock(&this->mtx);
+        this->mtx_lock = 0;
+        pr_warn("mutex unlock from userspace\n");
+        result = 0;
+        break;
+
+    case DEV_CMD_DQBUF:
+        if (mutex_trylock(&this->mtx))
         {
-            return len;
+            this->mtx_lock = 1;
+            pr_warn("mutex lock successfully from userspace\n");
+            *buffer = 0;
+            result = 0;
         }
         else
         {
-            pr_err("Data is not accessible\n");
+            pr_warn("mutex lock failed\n");
+            *buffer = -1;
         }
         break;
 
     default:
+        result = -1;
         break;
     }
-    return 0;
+    return result;
 }
 long dev_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -238,28 +250,52 @@ int dev_mmap(struct file *file, struct vm_area_struct *vma)
 {
     struct char_dev_t *this = file->private_data;
 
+    pr_info("mapping data to userspace\n");
+
+    pr_info("vma->vm_pgoff  = %ld\n", vma->vm_pgoff);
+    pr_info("vma_pages(vma)  = %ld\n", vma_pages(vma));
+    pr_info("(this->dma.size >> PAGE_SHIFT) = %d\n", (this->dma.size >> PAGE_SHIFT));
+
     if (vma->vm_pgoff + vma_pages(vma) > (this->dma.size >> PAGE_SHIFT))
+    {
         return -EINVAL;
+    }
 
     vma->vm_page_prot = _PGPROT_DMACOHERENT(vma->vm_page_prot);
 
     vma->vm_private_data = this;
 
-    unsigned long page_frame_num = (this->dma.dma_handler >> PAGE_SHIFT) + vma->vm_pgoff;
-    if (pfn_valid(page_frame_num))
+    pr_info("this->dma.dma_handler = %lld\n", this->dma.dma_handler);
+
+#if 0 // other solution, it works find 
+    struct page *page = NULL;
+    page = virt_to_page((unsigned long)this->dma.virt_addr + (vma->vm_pgoff << PAGE_SHIFT));
+    if (remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), this->dma.size, vma->vm_page_prot) == 0)
     {
-        pr_err("page frame numbber invalid\n");
+        pr_info("mapping successed\n");
         return 0;
     }
-
+    else
+        return -1;
+#endif
     return dma_mmap_coherent(this->device, vma, this->dma.virt_addr, this->dma.dma_handler, this->dma.size);
-    // if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, (vma->vm_end - vma->vm_start), vma->vm_page_prot) == 0)
-    // {
-    //     pr_info("mapping successed\n");
-    // }
-    // return 0;
 }
 /* End of file operation declearing*/
+
+/**
+ * @brief this function used to set the permission of dev file
+ * 
+ * @param dev 
+ * @param mode 
+ * @return char* 
+ */
+static char *devnode(struct device *dev, umode_t *mode)
+{
+    if (!mode)
+        return NULL;
+    *mode = 0666;   // rw-rw-rw
+    return NULL;
+}
 
 static int device_init(void)
 {
@@ -285,6 +321,8 @@ static int device_init(void)
         goto r_err;
     }
 
+    mm_dma_dev.dev_class->devnode = devnode;
+
     if ((mm_dma_dev.device = device_create(mm_dma_dev.dev_class, NULL, mm_dma_dev.dev, NULL, DEV_NAME)) == NULL)
     {
         pr_err("Can not create device\n");
@@ -309,28 +347,25 @@ r_err:
 
 static int device_dma_init(void)
 {
+    u64 mask = 0;
     mm_dma_dev.dma.size = DMA_BUFF_SIZE;
     mm_dma_dev.dma.created = 0;
-    
-    if (!dma_set_mask(mm_dma_dev.device, DMA_BIT_MASK(64)))
+
+    mask = dma_get_required_mask(mm_dma_dev.device);
+    pr_info("Device mask is 0x%llX\n", mask);
+
+    if (!dma_set_mask(mm_dma_dev.device, mask))
     {
-        dma_set_coherent_mask(mm_dma_dev.device, DMA_BIT_MASK(64));
-    }
-    else if (!dma_set_mask(mm_dma_dev.device, DMA_BIT_MASK(32)))
-    {
-        dma_set_coherent_mask(mm_dma_dev.device, DMA_BIT_MASK(32));
-    }
-    else if (!dma_set_mask(mm_dma_dev.device, DMA_BIT_MASK(24)))
-    {
-        dma_set_coherent_mask(mm_dma_dev.device, DMA_BIT_MASK(24));
+        dma_set_coherent_mask(mm_dma_dev.device, mask);
     }
     else
     {
         pr_warn("No suitable DMA available.\n");
-        return -1;
     }
 
     mm_dma_dev.dma.virt_addr = dma_alloc_coherent(mm_dma_dev.device, mm_dma_dev.dma.size, &mm_dma_dev.dma.dma_handler, GFP_KERNEL);
+
+    memcpy(mm_dma_dev.dma.virt_addr, "Hello from kernel\n", sizeof("Hello from kernel\n"));
 
     if (mm_dma_dev.dma.virt_addr == NULL)
     {
@@ -342,15 +377,14 @@ static int device_dma_init(void)
 
     pr_info("Allocate and set mask to dma successfully\n");
     return 0;
-
 }
 
 static void clean_up(void)
 {
     if (mm_dma_dev.buffer)
         kfree(mm_dma_dev.buffer);
-    
-    if(mm_dma_dev.dma.created)
+
+    if (mm_dma_dev.dma.created)
         dma_free_coherent(mm_dma_dev.device, mm_dma_dev.dma.size, mm_dma_dev.dma.virt_addr, mm_dma_dev.dma.dma_handler);
 
     device_destroy(mm_dma_dev.dev_class, mm_dma_dev.dev);
