@@ -36,6 +36,7 @@ int main()
             {
                 printf("dequeue successed\n");
                 printf("%s\n", (char*)dma_buffer);
+                usleep(100);
                 memcpy(dma_buffer, "Hello from userspace\n", sizeof("Hello from userspace\n"));
                 printf("%s\n", (char*)dma_buffer);
             }

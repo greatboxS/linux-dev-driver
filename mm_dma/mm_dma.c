@@ -1,12 +1,12 @@
 /**
  * @file mm-dma.c
  * @author greatboxs <https://github.com/greatboxs>
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2021-11-06
- * 
+ *
  * @copyright Copyright (c) 2021
- * 
+ *
  */
 
 #include "../common.h"
@@ -19,6 +19,8 @@
 #define DEV_BUFF_SIZE (PAGE_SIZE * 2)
 #define DEV_CLASS "mm-dma-dev"
 #define DEV_NAME "mm-dma-dev"
+
+#define DMA_OS_SUPPORT_BIT_MASK (sizeof(int)*8)
 
 #define DMA_BUFF_SIZE DEV_BUFF_SIZE
 
@@ -180,7 +182,7 @@ return_unlock:
 int dev_open(struct inode *node, struct file *file)
 {
     struct char_dev_t *this = NULL;
-   
+
     pr_info("Open mm-dma device\n");
 
     this = container_of(node->i_cdev, struct char_dev_t, c_dev);
@@ -255,7 +257,7 @@ int dev_mmap(struct file *file, struct vm_area_struct *vma)
 
     pr_info("vma->vm_pgoff  = %ld\n", vma->vm_pgoff);
     pr_info("vma_pages(vma)  = %ld\n", vma_pages(vma));
-    pr_info("(this->dma.size >> PAGE_SHIFT) = %d\n", (this->dma.size >> PAGE_SHIFT));
+    pr_info("(this->dma.size >> PAGE_SHIFT) = %ld\n", (this->dma.size >> PAGE_SHIFT));
 
     if (vma->vm_pgoff + vma_pages(vma) > (this->dma.size >> PAGE_SHIFT))
     {
@@ -268,7 +270,7 @@ int dev_mmap(struct file *file, struct vm_area_struct *vma)
 
     pr_info("this->dma.dma_handler = %lld\n", this->dma.dma_handler);
 
-#if 0 // other solution, it works find 
+#if 0 // other solution, it works find
     struct page *page = NULL;
     page = virt_to_page((unsigned long)this->dma.virt_addr + (vma->vm_pgoff << PAGE_SHIFT));
     if (remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), this->dma.size, vma->vm_page_prot) == 0)
@@ -278,23 +280,24 @@ int dev_mmap(struct file *file, struct vm_area_struct *vma)
     }
     else
         return -1;
-#endif
+#else
     return dma_mmap_coherent(this->device, vma, this->dma.virt_addr, this->dma.dma_handler, this->dma.size);
+#endif
 }
 /* End of file operation declearing*/
 
 /**
  * @brief this function used to set the permission of dev file
- * 
- * @param dev 
- * @param mode 
- * @return char* 
+ *
+ * @param dev
+ * @param mode
+ * @return char*
  */
 static char *devnode(struct device *dev, umode_t *mode)
 {
     if (!mode)
         return NULL;
-    *mode = 0666;   // rw-rw-rw
+    *mode = 0666; // rw-rw-rw
     return NULL;
 }
 
@@ -353,15 +356,12 @@ static int device_dma_init(void)
     mm_dma_dev.dma.created = 0;
 
     mask = dma_get_required_mask(mm_dma_dev.device);
-    pr_info("Device mask is 0x%llX\n", mask);
+    pr_info("Device minimum available mask is 0x%llX\n", mask);
 
-    if (!dma_set_mask(mm_dma_dev.device, mask))
-    {
-        dma_set_coherent_mask(mm_dma_dev.device, mask);
-    }
-    else
+    if (dma_set_coherent_mask(mm_dma_dev.device, DMA_BIT_MASK(DMA_OS_SUPPORT_BIT_MASK)) != 0)
     {
         pr_warn("No suitable DMA available.\n");
+        return -1;
     }
 
     mm_dma_dev.dma.virt_addr = dma_alloc_coherent(mm_dma_dev.device, mm_dma_dev.dma.size, &mm_dma_dev.dma.dma_handler, GFP_KERNEL);
